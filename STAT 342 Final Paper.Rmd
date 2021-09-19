@@ -1,0 +1,174 @@
+---
+title: "STAT 342 Final Paper"
+author: "Jueyao Liu"
+date: "6/5/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("ggplot2")
+library("tidyr")
+```
+# Testing 95% Confidence Intervals For One Sample
+```{r}
+# checks if a given p is contained in an interval
+contained <- function(p, interval) {
+  if (p >= interval[1] && p <= interval[2]) {
+    return(TRUE)
+  } else {
+    return(FALSE)
+  }
+}
+```
+
+```{r}
+# calculates the wald interval for a given sample of size n from a binomial dist
+wald_int <- function (sample, n, alpha) {
+  mle <- sample/n
+  z <- qnorm(1 - alpha/2)
+  c(mle - z * sqrt((mle)*(1-mle)/n), mle + z * sqrt((mle)*(1-mle)/n))
+}
+
+# calculates the percent of 2000 datasets drawn from binomial(n, p) where p is
+# within the 100(1-alpha) wald interval
+wald_coverage <- function(n, p, alpha) {
+  set.seed(1234)
+  rsamples <- rbinom(n = 2000, size = n, prob = p) 
+  w_int <- sapply(rsamples, FUN = wald_int, n = n, alpha = alpha)
+  w_int <- split(w_int, col(w_int))
+  covered <- sapply(w_int, FUN = contained, p = p) 
+  coverage <-  sum(covered) / 2000 
+  return(coverage)
+}
+```
+
+```{r}
+# calculates the score interval for a given sample of size n from a binomial dist
+score_int <- function (sample, n, alpha) {
+  mle <- sample/n
+  z <- qnorm(1 - alpha/2)
+  lower <- (mle + ((z^2)/(2*n)) - z*sqrt(((mle*(1-mle))/n)+((z^2)/(4*n^2))))/(1 + ((z^2)/n))
+  upper <- (mle + ((z^2)/(2*n)) + z*sqrt(((mle*(1-mle))/n)+((z^2)/(4*n^2))))/(1 + ((z^2)/n))
+  c(lower, upper)
+}
+
+# calculates the percent of 2000 datasets drawn from binomial(n, p) where p is
+# within the 100(1-alpha) score interval
+score_coverage <- function(n, p, alpha) {
+  set.seed(1234)
+  rsamples <- rbinom(n = 2000, size = n, prob = p) 
+  s_int <- sapply(rsamples, FUN = score_int, n = n, alpha = alpha)
+  s_int <- split(s_int, col(s_int))
+  covered <- sapply(s_int, FUN = contained, p = p) 
+  coverage <-  sum(covered) / 2000 
+  return(coverage)
+}
+```
+
+```{r}
+# calculates the score interval for a given sample of size n from a binomial dist
+plus4_int <- function (sample, n, alpha) {
+  mle <- sample/n
+  z <- qnorm(1 - alpha/2)
+  pi <- (sample + 2)/(n + 4)
+  lower <- pi - 2*sqrt((pi*(1-pi))/(n+4))
+  upper <- pi + 2*sqrt((pi*(1-pi))/(n+4))
+  c(lower, upper)
+}
+
+# calculates the percent of 2000 datasets drawn from binomial(n, p) where p is
+# within the 100(1-alpha) score interval
+plus4_coverage <- function(n, p, alpha) {
+  set.seed(1234)
+  rsamples <- rbinom(n = 2000, size = n, prob = p) 
+  p_int <- sapply(rsamples, FUN = plus4_int, n = n, alpha = alpha)
+  p_int <- split(p_int, col(p_int))
+  covered <- sapply(p_int, FUN = contained, p = p) 
+  coverage <-  sum(covered) / 2000 
+  return(coverage)
+}
+```
+
+```{r}
+true_p <- seq(0.001, 0.999, 0.001)
+coverage_20 <- data.frame(true_p, 
+                          wald = sapply(true_p, 
+                                        FUN = wald_coverage, 
+                                        n = 20, 
+                                        alpha = 0.1),
+                          score = sapply(true_p, 
+                                         FUN = score_coverage, 
+                                         n = 20, 
+                                         alpha = 0.1),
+                          plus4 = sapply(true_p, 
+                                         FUN = plus4_coverage, 
+                                         n = 20, 
+                                         alpha = 0.1)
+                          )
+coverage_20 <- gather(coverage_20, key = method, value = coverage, -true_p)
+ggplot(data = coverage_20,
+       aes(x = true_p, y = coverage, group = method, color = method)) +
+  geom_line() +
+  geom_hline(yintercept = 0.95) + 
+  coord_cartesian(ylim = c(0.75, 1)) +
+  labs(
+    title = "Coverage Rates of Confidence Intervals, n = 20",
+    x = "True p", 
+    y = "Coverage"
+  )
+
+coverage_100 <- data.frame(true_p, 
+                          wald = sapply(true_p, 
+                                        FUN = wald_coverage, 
+                                        n = 100, 
+                                        alpha = 0.1),
+                          score = sapply(true_p, 
+                                         FUN = score_coverage, 
+                                         n = 100, 
+                                         alpha = 0.1),
+                          plus4 = sapply(true_p, 
+                                         FUN = plus4_coverage, 
+                                         n = 100, 
+                                         alpha = 0.1)
+                          )
+coverage_100 <- gather(coverage_100, key = method, value = coverage, -true_p)
+ggplot(data = coverage_100,
+       aes(x = true_p, y = coverage, group = method, color = method)) +
+  geom_line() +
+  geom_hline(yintercept = 0.95) + 
+  coord_cartesian(ylim = c(0.75, 1)) +
+  labs(
+    title = "Coverage Rates of Confidence Intervals, n = 100",
+    x = "True p", 
+    y = "Coverage"
+  )
+
+coverage_500 <- data.frame(true_p, 
+                          wald = sapply(true_p, 
+                                        FUN = wald_coverage, 
+                                        n = 500, 
+                                        alpha = 0.1),
+                          score = sapply(true_p, 
+                                         FUN = score_coverage, 
+                                         n = 500, 
+                                         alpha = 0.1),
+                          plus4 = sapply(true_p, 
+                                         FUN = plus4_coverage, 
+                                         n = 500, 
+                                         alpha = 0.1)
+                          )
+coverage_500 <- gather(coverage_500, key = method, value = coverage, -true_p)
+ggplot(data = coverage_500,
+       aes(x = true_p, y = coverage, group = method, color = method)) +
+  geom_line() +
+  geom_hline(yintercept = 0.95) + 
+  coord_cartesian(ylim = c(0.8, 1)) +
+  labs(
+    title = "Coverage Rates of Confidence Intervals, n = 500",
+    x = "True p", 
+    y = "Coverage"
+  )
+
+```
+
