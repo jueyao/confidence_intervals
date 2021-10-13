@@ -1,0 +1,408 @@
+---
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(results = 'hide')
+library("ggplot2")
+library("tidyr")
+library("dplyr")
+```
+# Example
+It is well-documented in the assigned paper as well as in other literature 
+(Agresti & Coull, 1998) that the 95% confidence intervals for one and two 
+sample tests derived from Wald tests have poor performance in terms of coverage
+rates, with the actual coverage probability being much lower than intended.
+This result matches with our own simulations comparing the coverage rates of
+different confidence intervals with both one sample and two samples. \
+We want to investigate the performance of the adjusted Plus-4 intervals at
+other common levels of significance, $\alpha =0.1$ and $\alpha =0.01$ in
+comparison with other confidence intervals noted in the article. \
+```{r contained}
+# checks if a given p is contained in an interval
+contained <- function(p, interval) {
+  if (p >= interval[1] && p <= interval[2]) {
+    return(TRUE)
+  } else {
+    return(FALSE)
+  }
+}
+```
+
+## Testing One Sample Confidence Intervals at Different $\alpha$ Levels
+We simulated 500 datasets from a binomial distribution at different $n$ values
+and calculated the coverage rates as a function of the true value of $p$. We
+are testing the Wald and the Wilson Score intervals along with the Plus-4.\
+For the $\alpha = 0.05$, the results are as expected. The Score and Plus-4
+intervals work quite well, and the Wald underperforms for small $n$ values, but
+all three has asymptotically similar results as $n$ increases. \
+```{r coverage_one}
+# calculates the coverage rate of a given interval at a given alpha level by
+# simulating datasets from binom(n, p) 
+coverage_one <- function(interval, datasets, n, p, alpha) {
+  set.seed(1234)
+  rsamples <- rbinom(n = datasets, size = n, prob = p) 
+  int <- sapply(rsamples, FUN = interval, n = n, alpha = alpha)
+  int <- split(int, col(int))
+  covered <- sapply(int, FUN = contained, p = p) 
+  coverage <-  sum(covered) / datasets 
+  return(coverage)
+}
+```
+
+```{r wald_one_samp}
+# calculates the wald interval for one sample of size n from a binomial dist
+wald_int_one <- function (sample, n, alpha) {
+  mle <- sample/n
+  z <- qnorm(1 - alpha/2)
+  lower <- mle - z * sqrt((mle)*(1-mle)/n)
+  upper <- mle + z * sqrt((mle)*(1-mle)/n)
+  c(lower, upper)
+}
+```
+
+```{r score_one_samp}
+# calculates the score interval for a given sample of size n from a binomial dist
+score_int_one <- function (sample, n, alpha) {
+  mle <- sample/n
+  z <- qnorm(1 - alpha/2)
+  lower <- (mle+((z^2)/(2*n))-z*sqrt(((mle*(1-mle))/n)+((z^2)/(4*n^2))))/(1+((z^2)/n))
+  upper <- (mle+((z^2)/(2*n))+z*sqrt(((mle*(1-mle))/n)+((z^2)/(4*n^2))))/(1+((z^2)/n))
+  c(lower, upper)
+}
+```
+
+```{r plus4_one_samp}
+# calculates the plus-4 interval for a given sample of size n from a binomial dist
+plus4_int_one <- function (sample, n, alpha) {
+  pi <- (sample + 2)/(n + 4)
+  z <- qnorm(1 - alpha/2)
+  lower <- pi - z*sqrt((pi*(1-pi))/(n+4))
+  upper <- pi + z*sqrt((pi*(1-pi))/(n+4))
+  c(lower, upper)
+}
+```
+
+```{r graphs_functions_one_samp}
+# functions that graphs simulated coverage rates at a given alpha level
+true_p <- seq(0.001, 0.999, 0.001)
+simulate_one <- function(datasets, n, alpha) {
+  df <- data.frame(
+    true_p, 
+    wald = sapply(true_p, 
+                  FUN = coverage_one,
+                  interval = wald_int_one,
+                  datasets = datasets,
+                  n = n, 
+                  alpha = alpha),
+    score = sapply(true_p, 
+                   FUN = coverage_one,
+                   interval = score_int_one,
+                   datasets = datasets,
+                   n = n, 
+                   alpha = alpha),
+    plus4 = sapply(true_p, 
+                   FUN = coverage_one,
+                   interval = plus4_int_one,
+                   datasets = datasets,
+                   n = n, 
+                   alpha = alpha))
+  df <- gather(df, key = method, value = coverage, -true_p) %>%
+        mutate(n = paste("n =", toString(n)))
+  return(df)
+}
+
+plot_sims_one <- function(data, alpha, ylim) {
+  ggplot(data = data,
+       aes(x = true_p, y = coverage, group = method, color = method)) +
+  geom_line() +
+  geom_hline(yintercept = 1 - alpha) + 
+  coord_cartesian(ylim = c(ylim, 1)) +
+  labs(
+    title = paste("Coverage Rates of Confidence Intervals, a =", toString(alpha)),
+    x = "True p", 
+    y = "Coverage"
+  ) +
+  facet_wrap(~n)
+}
+```
+
+```{r graphs_one_samp_5}
+# graphs simulated coverage rates at different alpha = 0.05
+alpha <- 0.05
+sims <- 500
+one_samp_coverage <- rbind(simulate_one(sims, 5, alpha),
+                           simulate_one(sims, 20, alpha),
+                           simulate_one(sims, 100, alpha),
+                           simulate_one(sims, 500, alpha))
+one_samp_coverage$n <- factor(one_samp_coverage$n, 
+                              levels = c("n = 5","n = 20", "n = 100", "n = 500"))
+plot_sims_one(one_samp_coverage, alpha, 0.8)
+```
+Now we use the same 500 datasets and calculate the coverage rates at $\alpha =0.1$.
+For small $n$, the Plus-4 interval now performs slightly worse than the Score
+interval.\
+```{r graphs_one_samp_10}
+# graphs simulated coverage rates at different alpha = 0.1
+alpha <- 0.1
+one_samp_coverage <- rbind(simulate_one(sims, 5, alpha),
+                           simulate_one(sims, 20, alpha),
+                           simulate_one(sims, 100, alpha),
+                           simulate_one(sims, 500, alpha))
+one_samp_coverage$n <- factor(one_samp_coverage$n, 
+                              levels = c("n = 5","n = 20", "n = 100", "n = 500"))
+plot_sims_one(one_samp_coverage, alpha, 0.75)
+```
+Again using the same 500 datasets and calculate the coverage rates at $\alpha =0.01$.
+For small $n$, the Plus-4 interval now performs noticeably than the Score
+interval.\
+```{r graphs_one_samp_1}
+# graphs simulated coverage rates at different alpha = 0.01
+alpha <- 0.01
+one_samp_coverage <- rbind(simulate_one(sims, 5, alpha),
+                           simulate_one(sims, 20, alpha),
+                           simulate_one(sims, 100, alpha),
+                           simulate_one(sims, 500, alpha))
+one_samp_coverage$n <- factor(one_samp_coverage$n, 
+                              levels = c("n = 5","n = 20", "n = 100", "n = 500"))
+plot_sims_one(one_samp_coverage, alpha, 0.85)
+```
+
+## Testing Two Sample Confidence Intervals at Different $\alpha$ Levels
+For two sample confidence intervals, we simulated two groups of 500 datasets
+from binomial(n1, p1) and binomial(n2, p2). The confidence interval attempts
+to estimate the difference $p_1 - p_2$. We hold $p_2$ fixed and cacluate the
+coverage rate as a function of $p_1$. We are testing the Wald and the Hybrid
+Score (Newcome Score) intervals along with the Plus-4.\
+As expected from the reading, the Score and Plus-4 intervals work quite well
+for $\alpha =0.05$ and the Wald underperforms for $p_2$ close to 0 or 1, though
+all three intervals performs worse for those extreme $p_2$. \
+```{r coverage_two}
+# calculates the coverage rate of a given interval at a given alpha level by
+# simulating datasets from binom(n1, p1)  and the same number of datasets from
+# binom(n2, p2)
+coverage_two <- function(interval, datasets, n1, n2, p1, p2, alpha) {
+  set.seed(1234)
+  rsamples1 <- rbinom(n = datasets, size = n1, prob = p1)
+  rsamples2 <- rbinom(n = datasets, size = n2, prob = p2) 
+  int <- mapply(sample1 = rsamples1, 
+                sample2 = rsamples2,
+                FUN = interval, 
+                MoreArgs = list(n1 = n1, n2 = n2, alpha = alpha))
+  int <- split(int, col(int))
+  covered <- sapply(int, FUN = contained, p = (p1 - p2)) 
+  coverage <-  sum(covered) / datasets
+  return(coverage)
+}
+```
+
+```{r wald_two_samp}
+# calculates the wald interval for one two samples of size n1 and n2 from
+# binomial distributions (p1 - p2)
+wald_int_two <- function (sample1, sample2, n1, n2, alpha) {
+  mle1 <- sample1/n1
+  mle2 <- sample2/n2
+  z <- qnorm(1 - alpha/2)
+  lower <- (mle1 - mle2) - z * sqrt(((mle1*(1-mle1))/n1)+((mle2*(1-mle2))/n2))
+  upper <- (mle1 - mle2) + z * sqrt(((mle1*(1-mle1))/n1)+((mle2*(1-mle2))/n2))
+  c(lower, upper)
+}
+```
+
+```{r score_two_samp}
+# calculates the hybrid score interval for one two samples of size n1 and n2 
+# from binomial distributions (p1 - p2)
+score_int_two <- function (sample1, sample2, n1, n2, alpha) {
+  mle1 <- sample1/n1
+  mle2 <- sample2/n2
+  score1 <- score_int_one(sample1, n1, alpha)
+  score2 <- score_int_one(sample2, n2, alpha)
+  lower <- (mle1 - mle2) - sqrt(((mle1 - score1[1])^2) + ((score2[2] - mle2)^2))
+  upper <- (mle1 - mle2) + sqrt(((score1[2] - mle1)^2) + ((mle2 - score2[1])^2))
+  c(lower, upper)
+}
+```
+
+```{r plus4_two_samp}
+# calculates the plus-4 interval for one two samples of size n1 and n2 from
+# binomial distributions (p1 - p2)
+plus4_int_two <- function (sample1, sample2, n1, n2, alpha) {
+  p1 <- (sample1 + 1)/(n1 + 2)
+  p2 <- (sample2 + 1)/(n2 + 2)
+  z <- qnorm(1 - alpha/2)
+  lower <- (p1 - p2) - z * sqrt(((p1*(1-p1))/(n1+2)) + ((p2*(1-p2))/(n2+2)))
+  upper <- (p1 - p2) + z * sqrt(((p1*(1-p1))/(n1+2)) + ((p2*(1-p2))/(n2+2)))
+  c(lower, upper)
+}
+```
+
+
+```{r graphs_functions_two_samp}
+# functions that graphs simulated coverage rates at a given alpha level
+true_p1 <- seq(0.001, 0.999, 0.001)
+simulate_two <- function(datasets, n1, n2, p2, alpha) {
+  df <- data.frame(
+    true_p1, 
+    wald = sapply(true_p1, 
+                  FUN = coverage_two,
+                  interval = wald_int_two, 
+                  datasets = datasets, 
+                  p2 = p2,
+                  n1 = n1, 
+                  n2 = n2,
+                  alpha = alpha),
+    hybrid = sapply(true_p1, 
+                    FUN = coverage_two,
+                    interval = score_int_two, 
+                    datasets = datasets, 
+                    p2 = p2,
+                    n1 = n1, 
+                    n2 = n2,
+                    alpha = alpha),
+    plus4 = sapply(true_p1, 
+                   FUN = coverage_two,
+                   interval = plus4_int_two, 
+                   datasets = datasets, 
+                   p2 = p2,
+                   n1 = n1, 
+                   n2 = n2,
+                   alpha = alpha))
+  df <- gather(df, key = method, value = coverage, -true_p1) %>%
+        mutate(p2 = paste("p2 =", toString(p2)))
+  return(df)
+}
+
+plot_sims_two <- function(data, n1, n2, alpha, ylim) {
+  ggplot(data = data,
+       aes(x = true_p1, y = coverage, group = method, color = method)) +
+  geom_line() +
+  geom_hline(yintercept = 1 - alpha) + 
+  coord_cartesian(ylim = c(ylim, 1)) +
+  labs(
+    title = paste("Coverage Rates of Confidence Intervals, a = ", 
+                  toString(alpha),
+                  ", n1 = ",
+                  toString(n1),
+                  ", n2 = ",
+                  toString(n2)),
+    x = "True p1", 
+    y = "Coverage"
+  ) +
+  facet_wrap(~p2)
+}
+```
+
+```{r graphs_two_samp_5}
+# graphs simulated coverage rates at different alpha = 0.05, n1 = n2 = 20
+alpha <- 0.05
+n1 <- 20
+n2 <- 20
+two_samp_coverage <- rbind(simulate_two(sims, n1, n2, 0.1, alpha),
+                           simulate_two(sims, n1, n2, 0.3, alpha),
+                           simulate_two(sims, n1, n2, 0.5, alpha),
+                           simulate_two(sims, n1, n2, 0.7, alpha))
+two_samp_coverage$p2 <- factor(two_samp_coverage$p2, 
+                              levels = c("p2 = 0.1","p2 = 0.3", "p2 = 0.5", "p2 = 0.7"))
+plot_sims_two(two_samp_coverage, n1, n2, alpha, 0.80)
+```
+Now we use the same datasets and calculate the coverage rates at $\alpha =0.1$.
+Notice that while there is no significant difference between the coverage rates
+of the Hybrid Score and the Plus-4, the Plus-4 now underperforms even for $p_2$
+near 0.5.\
+```{r graphs_two_samp_10}
+# graphs simulated coverage rates at different alpha = 0.1, n1 = n2 = 20
+alpha <- 0.1
+two_samp_coverage <- rbind(simulate_two(sims, n1, n2, 0.1, alpha),
+                           simulate_two(sims, n1, n2, 0.3, alpha),
+                           simulate_two(sims, n1, n2, 0.5, alpha),
+                           simulate_two(sims, n1, n2, 0.7, alpha))
+two_samp_coverage$p2 <- factor(two_samp_coverage$p2, 
+                              levels = c("p2 = 0.1","p2 = 0.3", "p2 = 0.5", "p2 = 0.7"))
+plot_sims_two(two_samp_coverage, n1, n2, alpha, 0.75)
+```
+Again, the same datasets aer used to calculate the coverage rates at $\alpha =0.1$.
+Again, Hybrid Score and the Plus-4 performs well, but now the Plus-4 does not
+perform worse for extreme $p_2$ and actually does much better than the Hybrid
+for those values.\
+```{r graphs_two_samp_1}
+# graphs simulated coverage rates at different alpha = 0.01, n1 = n2 = 20
+alpha <- 0.01
+two_samp_coverage <- rbind(simulate_two(sims, n1, n2, 0.1, alpha),
+                           simulate_two(sims, n1, n2, 0.3, alpha),
+                           simulate_two(sims, n1, n2, 0.5, alpha),
+                           simulate_two(sims, n1, n2, 0.7, alpha))
+two_samp_coverage$p2 <- factor(two_samp_coverage$p2, 
+                              levels = c("p2 = 0.1","p2 = 0.3", "p2 = 0.5", "p2 = 0.7"))
+plot_sims_two(two_samp_coverage, n1, n2, alpha, 0.85)
+```
+Generally, from the simulations we observed that the adjusted Plus-4 interval
+performs well for a confidence level of 95%, underperforms as the confidence
+level lowers to 90%, and performs better when the condifence level grows to 99%.\
+```{r graphs_two_samp_5_uneven}
+# graphs simulated coverage rates at different alpha = 0.05, n1 = n2 = 20
+alpha <- 0.05
+n1 <- 10
+n2 <- 40
+two_samp_coverage <- rbind(simulate_two(sims, n1, n2, 0.1, alpha),
+                           simulate_two(sims, n1, n2, 0.3, alpha),
+                           simulate_two(sims, n1, n2, 0.5, alpha),
+                           simulate_two(sims, n1, n2, 0.7, alpha))
+two_samp_coverage$p2 <- factor(two_samp_coverage$p2, 
+                              levels = c("p2 = 0.1","p2 = 0.3", "p2 = 0.5", "p2 = 0.7"))
+plot_sims_two(two_samp_coverage, n1, n2, alpha, 0.80)
+```
+
+```{r ref.label='contained', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='coverage_one', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='wald_one_samp', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='score_one_samp', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='plus4_one_samp', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='graphs_functions_one_samp', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='graphs_one_samp_5', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='graphs_one_samp_10', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='graphs_one_samp_1', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='coverage_two', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='wald_two_samp', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='score_two_samp', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='plus4_two_samp', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='graphs_functions_two_samp', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='graphs_two_samp_5', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='graphs_two_samp_10', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='graphs_two_samp_1', eval=FALSE, echo=TRUE}
+```
+
+```{r ref.label='graphs_two_samp_5_uneven', eval=FALSE, echo=TRUE}
+```
